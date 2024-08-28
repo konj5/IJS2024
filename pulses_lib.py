@@ -205,8 +205,41 @@ def reconstruct_state_L1(state):
     substates = []
     for i in range(N):
         theta = np.arccos(exactZ[i])
-        phi = np.arccos(exactX[i] / np.sqrt(1-exactZ[i]**2))
+        if exactZ[i] != 1.0:
+            phi = np.arccos(exactX[i] / np.sqrt(1-exactZ[i]**2))
+        else:
+            phi = 0
         
         substates.append(generate_single_spin_state(phi,theta))
+    newstate = qt.tensor(substates)
+    return newstate * newstate.dag()
+
+def reconstruct_state_L1_LSQ(state):
+    def find_state(sx,sy,sz):
+        from scipy.optimize import least_squares
+
+        def f(x):
+            theta = x[0]
+            phi = x[1]
+
+            return np.array([np.sin(theta)*np.cos(phi) - sx, np.sin(theta)*np.sin(phi) - sy, np.cos(theta) - sz])
+        
+
+
+        sol = least_squares(f, x0=[0,0])
+        
+        return generate_single_spin_state(sol.x[1], sol.x[0])
+    
+    N = int(np.round(np.log2(state.shape[0])))
+    sx_list, sy_list, sz_list = make_operator_lists(N)
+    exactZ, exactY , exactX = [], [], []
+    for i in range(N):
+        exactX.append(qt.expect(sx_list[i], state))
+        exactY.append(qt.expect(sy_list[i], state))
+        exactZ.append(qt.expect(sz_list[i], state))
+
+    substates = []
+    for i in range(N):
+        substates.append(find_state(exactX[i], exactY[i], exactZ[i]))
     newstate = qt.tensor(substates)
     return newstate * newstate.dag()
