@@ -16,9 +16,9 @@ sx = qt.sigmax()
 sy = qt.sigmay()
 sz = qt.sigmaz()
 
-end_of_cycle_measurement = False          # Meritev spinov v sigma^z bazi po koncu vsakega cikla
+end_of_cycle_measurement = True          # Meritev spinov v sigma^z bazi po koncu vsakega cikla
 pass_directly_with_added_errors = False 
-remake_product_state = True
+remake_product_state = False
 remake_product_state_LSQ = False 
 open_dynamics = False          # Odprt sistem z sigma^z collapse operatorji na vsakem spinu
 couplings_decrease = True      # Linearno nižanje  sklopitve iz cikla v cikel
