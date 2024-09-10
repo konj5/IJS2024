@@ -38,7 +38,7 @@ L = 3  # length of chain
 N = 2*L # total number of sites
 
 J = 1
-hx = 0.2
+hx = 1
 hz = 0
 
 #### Coupling and bath parameters ####
@@ -625,18 +625,20 @@ def animate(i):
     t0 = time.time()
     y=barlist(i)
     space = "                                                      "
+    space = space + space
     print(f"{i} \ {len(valss[:,0])}: time:{np.average(dts) * (len(valss[:,0])-i) / 60 : 0.2f}min" + space, end = "\r")
     for k, b in enumerate(barcollection):
         b.set_height(y[k])
         
-    fig2.set_ylim(np.min(y)*0.96, np.max(y)*1.04)
-        
+    #fig2.set_ylim(np.min(y)*0.96, np.max(y)*1.04)
+    fig2.set_ylim(0,1)   
         
     y=barlist2(i)
     for k, b in enumerate(barcollection2):
         b.set_height(y[k])
         
-    fig3.set_ylim(np.min(y)*0.96, np.max(y)*1.04)
+    #fig3.set_ylim(np.min(y)*0.96, np.max(y)*1.04)
+    fig3.set_ylim(0,1)
         
     epoint.set_offsets((ts[i], energies[i]))
     
