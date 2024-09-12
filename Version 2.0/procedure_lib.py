@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
 from tqdm import tqdm
+import time, timeit
 
 sns.set_style("whitegrid")
 
@@ -23,7 +24,7 @@ hb_decrease = False           #  Linearno nižanje hb polja iz cikla v cikel
 
 
 
-class procedure:
+class Procedure:
     
     def __init__(self, 
                  L = 3,
@@ -400,10 +401,11 @@ class procedure:
             eigensTFIM = []
             for i in tqdm(range(len(tlist)), desc = "eigens", leave=False):
                 H = H_ising_chain + H_bath_x_field + H_bath_z_field * bath_z_field_zeeman_drive(tlist[i], time_dependant_functions_coeffs) + H_coupling * coupling_drive(tlist[i], time_dependant_functions_coeffs)
-                eigens.append(H.eigenstates()[1])
+                eigens.append(H.eigenstates())
                 
                 H = H_ising_chain
-                eigensTFIM.append(H.eigenstates()[1])
+                eigensTFIM.append(H.eigenstates())
+                
 
 
             return result, eigens, eigensTFIM
@@ -514,16 +516,18 @@ class procedure:
                     
                     from pulses_lib import reconstruct_state_L1
                     reconstructed_state = reconstruct_state_L1(tfim_part_of_the_end_cycle_state_density_matrix)
+                    reconstructed_density_matrix = reconstructed_state * reconstructed_state.dag()
 
-                    initial_state = qt.tensor([reconstructed_state, bath_fully_polarized_density_matrix])
+                    initial_state = qt.tensor([reconstructed_density_matrix, bath_fully_polarized_density_matrix])
 
                 elif remake_product_state_LSQ: 
                     tfim_part_of_the_end_cycle_state_density_matrix = end_cycle_state.ptrace([i for i in range(L)])
                     
                     from pulses_lib import reconstruct_state_L1_LSQ
                     reconstructed_state = reconstruct_state_L1_LSQ(tfim_part_of_the_end_cycle_state_density_matrix)
+                    reconstructed_density_matrix = reconstructed_state * reconstructed_state.dag()
 
-                    initial_state = qt.tensor([reconstructed_state, bath_fully_polarized_density_matrix])
+                    initial_state = qt.tensor([reconstructed_density_matrix, bath_fully_polarized_density_matrix])
 
                 elif pass_directly_with_added_errors:
                     m_part_of_the_end_cycle_state_density_matrix = end_cycle_state.ptrace([i for i in range(L)])
@@ -888,16 +892,16 @@ class procedure:
             # Running the time evolution
 
             #result = qt.mesolve(H, psi0, tlist, c_ops=col_ops, e_ops=[], args=time_dependant_functions_coeffs)
-            result = qt.sesolve(H, psi0, tlist, c_ops=col_ops, e_ops=[], args=time_dependant_functions_coeffs)
+            result = qt.sesolve(H, psi0, tlist, e_ops=[], args=time_dependant_functions_coeffs)
         
             eigens = []
             eigensTFIM = []
             for i in tqdm(range(len(tlist)), desc = "eigens", leave=False):
                 H = H_ising_chain + H_bath_x_field + H_bath_z_field * bath_z_field_zeeman_drive(tlist[i], time_dependant_functions_coeffs) + H_coupling * coupling_drive(tlist[i], time_dependant_functions_coeffs)
-                eigens.append(H.eigenstates()[1])
+                eigens.append(H.eigenstates())
                 
                 H = H_ising_chain
-                eigensTFIM.append(H.eigenstates()[1])
+                eigensTFIM.append(H.eigenstates())
 
 
             return result, eigens, eigensTFIM
@@ -1039,4 +1043,18 @@ class procedure:
     
     
 if __name__ == "__main__": 
-       
+        Proc = Procedure(remake_product_state_LSQ=False, N_cycles=2, L = 1)
+        
+        #t0 = time.time()
+        #data1 = Proc.run_with_sesolve()
+        #print(time.time() - t0)
+        t0 = time.time()
+        data2 = Proc.run_with_mesolve()
+        print(time.time() - t0)
+
+        eigen = data2[1]
+
+        print(len(eigen))
+        print(len(eigen[0]))
+        print(len(eigen[0][0]))
+        print(len(eigen[0][0][0]))
