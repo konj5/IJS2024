@@ -3,7 +3,7 @@ import qutip as qt
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 import time, timeit
 
 sns.set_style("whitegrid")
