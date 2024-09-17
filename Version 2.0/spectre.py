@@ -8,8 +8,8 @@ import time, timeit
 
 import procedure_lib as proclib
 
-ideal = proclib.Procedure(L=2, N_cycles=2)
-xyz = proclib.Procedure(L=2, N_cycles=25, remake_product_state_LSQ=True)
+ideal = proclib.Procedure(L=3, N_cycles=25)
+xyz = proclib.Procedure(L=4, N_cycles=25, remake_product_state_LSQ=True, hx=1.1)
 
 #data = ideal.run_with_mesolve()
 
@@ -139,7 +139,7 @@ def animate(n):
     for i in range(N_states):
         xdata = ts[0:I]
         ydata = np.array(energy[cycle, i, 0:I])
-        width = np.array(dotproducts[cycle, i, 0:I])
+        width = np.array(dotproducts[cycle, i, 0:I])*5
         slidinggraphs.append(ax.fill_between(xdata, ydata-width/2, ydata+width/2))
 
     space = "                                                      "
