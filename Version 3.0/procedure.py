@@ -233,12 +233,3 @@ proc = Procedure()
 proc.setParameters(L=10)
 print(proc.runProcedure(N_cycles=1, measure=Procedure.measure_energy))
 
-
-
-
-
-
-
-
-
-
