@@ -3,7 +3,7 @@ import qutip as qt
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 import time, timeit
 
 import measurables
@@ -158,17 +158,12 @@ class Procedure:
 
     #Privzeto začetno stanje
     @staticmethod
-    def default_get_start_statevector(L:int):
+    def default_get_startstate(L: int):
         neel_state = qt.tensor([qt.basis(2,i%2) for i in range(L)])
         bath_fully_polarized_state = qt.tensor([qt.basis(2,0) for i in range(L)])
 
         initial_state = qt.tensor([neel_state, bath_fully_polarized_state])
         return initial_state
-    
-    @staticmethod
-    def default_get_start_density_matrix(L:int):
-        vector = Procedure.default_get_start_statevector(L)
-        return vector * vector.dag()
     
     #Metoda, ki vzame stanje sistema in vrne samo stanje verige
     @staticmethod
@@ -234,21 +229,13 @@ class Procedure:
         energy = qt.expect(measurables.tfim_hamiltonian(L, proc.tfim_parameters), state)
         return [energy]
     
-    @staticmethod
-    def measure_normalization_density_matrix(state:qt.Qobj, proc:"Procedure"):
-        return [(state*state.dag()).tr()]
-    
-    @staticmethod
-    def measure_normalization_state_vector(state:qt.Qobj, proc:"Procedure"):
-        return [state.dag()*state]
-    
     #Razlaga funkcij, ki jih runProcedure zahteva kot argumente
 
     #measure(state:qt.Qobj, proc:Procedure): funkcija ki prevzame stanje verige in kopeli iz vrne enodimenzionalen list ali np.ndarray, ki vsebuje meritve, ki nas zanimajo. Te morajo biti številke
     #setup_state_for_next_cycle(state:qt.Qobj, proc:Procedure): funkcija ki vzame končno stanje verige in kopeli, ter vrne začetno stanje obeh, za naslednji cikel
     #get_startstate(L:int): funkcija, ki vrne stanje verige in kopeli, na začetku prvega cikla
 
-    def runProcedure(self, N_cycles:int, measure:callable, setup_state_for_next_cycle:callable = pass_full_density_matrix, using_state_vectors:bool = False, using_density_matrices:bool = False, get_startstate:callable="use_default",
+    def runProcedure(self, N_cycles:int, measure:callable, setup_state_for_next_cycle:callable = pass_full_density_matrix, get_startstate:callable = default_get_startstate, 
                       coupling_decrease:callable="use_default", bath_z_field_zeeman_drive:callable="use_default", Jc_drive:callable="use_default", get_eigenstates:bool = False):
         
         #list vseh časov znotraj enega cikla, ko poberemo podatke
@@ -256,49 +243,29 @@ class Procedure:
 
         #ustvarimo hamiltonian
         hamiltonian = Hamiltonian(self.L, N_cycles, self.tfim_parameters, self.bath_parameters, self.coupling_parameters, 
-                                  coupling_decrease="use_default", bath_z_field_zeeman_drive="use_default", Jc_drive="use_default")
+                                  coupling_decrease=coupling_decrease, bath_z_field_zeeman_drive=bath_z_field_zeeman_drive, Jc_drive=Jc_drive)
 
         #podatkovna struktura, v katero bomo vpisovali podatke [meritve, cikli, čaz znotraj cikla]
         data = None
 
-        #Ugotovi, ali delamo z vektorji stanj ali gostotnimi matrikami
-        if get_startstate == "use_default":
-            if using_state_vectors == using_density_matrices:
-                if using_state_vectors == False: raise Exception("You have to choose either using_state_vectors or using_density_matrices")
-                raise Exception("You can't choose both using_state_vectors and using_density_matrices")
-            
-            if using_state_vectors:
-                get_startstate = Procedure.default_get_start_statevector
-            else:
-                get_startstate = Procedure.default_get_start_density_matrix
-                
-
         #Nastavimo začetno stanje
         state = get_startstate(self.L)
         measurements = measure(state, self)
-        data = np.zeros((len(measurements), N_cycles, len(ts)), dtype=np.complex64)
+        data = np.zeros((len(measurements), N_cycles, len(ts)-1), dtype=np.complex64)
+        data[:,0,0] = np.array(measurements)
+
         for i in tqdm(range(N_cycles), desc = "Cycle"):
             for j in tqdm(range(len(ts)-1), desc = "sesolve", leave=False):
                 #Evolucija stanja za en dt naprej
-                if using_state_vectors:
-                    result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=[ts[j], ts[j+1]])
-                else:
-                    result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=[ts[j], ts[j+1]])
-
-                #Posebej moramo zapisati še začetno stanje, ker ga sicer nebi zapisali
-                if j == 0:
-                    state = result.states[0]
-                    measurements = measure(state, self)
-                    data[:,i,0] = np.array(measurements)
-
+                result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=[ts[j], ts[j+1]])
                 state = result.states[-1]
-
 
                 #Meritev željenih opazljivk
                 measurements = measure(state, self)
 
-                #Meritve shranimo
-                data[:,i,j+1] = np.array(measurements)
+                #Meritve shranimo (Inicializiramo podatkovno strukturo če še ni)
+                    
+                data[:,i,j] = np.array(measurements)
 
             #Stanje podamo v naslednji cikel
             state = setup_state_for_next_cycle(state, self)
@@ -308,16 +275,9 @@ class Procedure:
 #Primer uporabe
 if __name__ == "__main__":
     proc = Procedure()
-    proc.setParameters(L=3)
-
-    times = np.arange(0,proc.T+proc.dt, proc.dt)
+    proc.setParameters(L=6)
 
     T = proc.T
-    N_cycles = 4
-
-    data = proc.runProcedure(N_cycles=N_cycles, measure=Procedure.measure_energy,
-                          setup_state_for_next_cycle=Procedure.pass_full_density_matrix,
-                          coupling_decrease="use_default", using_density_matrices=True)
 
     #Stopnica nastavljena na roko, za T = 50
     def smooth_step_coupling_decrease(t):
@@ -331,34 +291,5 @@ if __name__ == "__main__":
         def f(t): return g(a * ((t-ta)-t1)) + g(-a * ((t+ta)-t0)) - 1
         return f
 
-    H_TFIM = measurables.tfim_hamiltonian(proc.L, proc.tfim_parameters)
-    M_TFIM = measurables.tfim_magnetisation(proc.L)
+    print(proc.runProcedure(N_cycles=3, setup_state_for_next_cycle=Procedure.remake_product_state_with_xz, measure=Procedure.measure_energy, coupling_decrease=smooth_step_coupling_decrease))
 
-    eigen_energies = H_TFIM.eigenenergies()
-
-    E0 = eigen_energies[0]
-    print("TFIM ground energy: ", E0)
-
-    cmap = plt.get_cmap('jet')
-    COLORS = [cmap(i) for i in np.linspace(.01, .99, N_cycles)]
-
-    for i in range(len(data[0,:,0])):
-        plt.plot(times, data[0,i,:], color=COLORS[i])
-
-    plt.axhline(y=E0, linestyle='--', color='black', label=r"$E_0$")
-
-    norm = mpl.colors.Normalize(vmin=0, vmax=N_cycles)
-    scalarmappable = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-    plt.colorbar(scalarmappable, ax=plt.gca(), label="Cycle number")
-
-    plt.xlabel("Time (during single cycle)", fontsize = 15)
-    plt.ylabel("TFIM energy", fontsize = 15)
-    plt.title("TFIM energies during cycles", fontsize = 16)
-    plt.show()
-
-
-    for i in range(len(data[0,0,:])):
-        line = ""
-        for j in range(N_cycles):
-            line += f"{data[0,j,i]} "
-        print(line)
