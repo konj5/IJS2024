@@ -3,7 +3,7 @@ import qutip as qt
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 import time, timeit
 
 import measurables
@@ -113,7 +113,7 @@ class Hamiltonian():
 
         self.H_coupling = H_coupling
 
-    #Metoda, ki sestavi in vrne časovno odvisni hamiltonian
+
     def getHamiltonian(self, cycleNumber:int):
         #Dobimo vrednost Jc za dani cikel
         Jc0, T = self.coupling_parameters
@@ -121,81 +121,9 @@ class Hamiltonian():
 
         #Sestavimo hamiltonian, ki gre v sesolve
         H = [self.H_ising_chain, self.H_bath_x_field, [self.H_bath_z_field, self.bath_z_field_zeeman_drive], [self.H_coupling, lambda t: self.Jc_drive(t) * Jc]]
+
         
         return H
-    
-    #Metoda, ki sestavi in vrne hamiltonian v določenem trenutku
-    def getInstantaneousHamiltonian(self, cycleNumber:int, t:float):
-        #Dobimo vrednost Jc za dani cikel
-        Jc0, T = self.coupling_parameters
-        Jc = self.coupling_decrease(cycleNumber) * Jc0
-
-        #Sestavimo hamiltonian, ki gre v sesolve
-        H = self.H_ising_chain + self.H_bath_x_field + self.H_bath_z_field * self.bath_z_field_zeeman_drive(t) + self.H_coupling * self.Jc_drive(t) * Jc
-        return H
-
-    #Metoda, ki vrne hamiltonian verige
-    eigenenergies, eigenstates = None, None
-    def getChainHamiltonianEigens(self):
-        #Poskrbimo, da diagonalizacije ne izvajamo več kot enkrat
-        if self.eigenenergies is None:
-
-            si = qt.qeye(2)
-            sx = qt.sigmax()
-            sy = qt.sigmay()
-            sz = qt.sigmaz()
-            sx_list = []
-            sy_list = []
-            sz_list = []
-
-            L = self.L
-
-            N = L
-
-            for n in range(N):
-                op_list = []
-                for m in range(N):
-                    op_list.append(si)
-
-                op_list[n] = sx
-                sx_list.append(qt.tensor(op_list))
-
-                op_list[n] = sy
-                sy_list.append(qt.tensor(op_list))
-
-                op_list[n] = sz
-                sz_list.append(qt.tensor(op_list))
-
-            self.sx_list = sx_list
-            self.sy_list = sy_list
-            self.sz_list = sz_list
-
-            #Ustvarimo časovno popolnoma neodvisen hamiltonian verige
-            J, hx, hz = self.tfim_parameters
-
-            J_list = np.ones(L) * J
-            hx_list = np.ones(L) * hx
-            hz_list = np.ones(L) * hz
-
-            H_ising_chain = 0
-
-            for n in range(L):
-                H_ising_chain += -hx_list[n] * sx_list[n]
-                H_ising_chain += -hz_list[n] * sz_list[n]
-
-            for n in range(L):
-                H_ising_chain += - J_list[n] * sz_list[n] * sz_list[((n+1)%L)]
-
-
-
-
-            eigenenergies, eigenstates = H_ising_chain.eigenstates()
-            self.eigenenergies, self.eigenstates = eigenenergies, eigenstates
-            return eigenenergies, eigenstates
-
-        return self.eigenenergies, self.eigenstates
-        
-
     
 
 
@@ -231,18 +159,6 @@ class Procedure:
         self.time_dependant_functions_coeffs = {'Jc': Jc, 'T': T, 'Bi': Bi, 'Bf': Bf}
         self.error_percentage = error_percentage
 
-    #Shrani hamiltonian trenutnega procesa
-    def set_current_hamiltonian(self, hamiltonian:Hamiltonian):
-        self.hamiltonian = hamiltonian
-        
-
-    #Shrani čas trenutnega procesa
-    def set_current_time(self, t:float):
-        self.t = t
-
-    #Shrani trenutni cikel trenutnega procesa
-    def set_current_cycle_number(self, cycle_number:int):
-        self.cycle_number = cycle_number
 
     #Privzeto začetno stanje
     @staticmethod
@@ -258,6 +174,7 @@ class Procedure:
         vector = Procedure.default_get_start_statevector(L)
         return vector * vector.dag()
     
+
     ###Več možnih metod, za podajanje stanja med cikli
     @staticmethod
     def pass_full_density_matrix(state:qt.Qobj, proc:"Procedure"):
@@ -284,9 +201,8 @@ class Procedure:
 
         return qt.tensor([chain_density_matrix, bath_fully_polarized_density_matrix])
     
-    
     @staticmethod
-    def pass_measure_z_direction(state:qt.Qobj, proc:"Procedure"):
+    def measure_z_direction(state:qt.Qobj, proc:"Procedure"):
         L = proc.L
         mag, after_measure_state = qt.measurement.measure_observable(state, measurables.tfim_magnetisation(L))
         tfim_part_of_the_end_cycle_state_density_matrix = after_measure_state.ptrace([i for i in range(L)])
@@ -298,7 +214,7 @@ class Procedure:
         return qt.tensor([tfim_part_of_the_end_cycle_state, bath_fully_polarized_state])
     
     @staticmethod
-    def pass_remake_product_state_with_xz(state:qt.Qobj, proc:"Procedure"):
+    def remake_product_state_with_xz(state:qt.Qobj, proc:"Procedure"):
         L = proc.L
         state = state * state.dag()
         tfim_part_of_the_end_cycle_state_density_matrix = state.ptrace([i for i in range(L)])
@@ -310,7 +226,7 @@ class Procedure:
         return qt.tensor([reconstructed_state, bath_fully_polarized_state])
     
     @staticmethod
-    def pass_remake_product_state_with_xyz(state:qt.Qobj, proc:"Procedure"):
+    def remake_product_state_with_xyz(state:qt.Qobj, proc:"Procedure"):
         L = proc.L
         state = state * state.dag()
         tfim_part_of_the_end_cycle_state_density_matrix = state.ptrace([i for i in range(L)])
@@ -320,92 +236,34 @@ class Procedure:
         bath_fully_polarized_state = qt.tensor([qt.basis(2,0) for i in range(L)])
 
         return qt.tensor([reconstructed_state, bath_fully_polarized_state])
-    
 
-
-
-    #Metoda za izračun absolutne vrednosti kvadrata skalarnega produkta stanj
+ 
     @staticmethod
-    def abs_squared_scalarproduct(a,b):
-        prod = a.dag() * b
-        if type(prod) is not qt.Qobj:
-            return np.abs(prod)**2
-        else:
-            return np.abs((a*(b*b.dag())).tr())
-
-    #Nekaj primerov metod measure
-
-    @staticmethod
-    def measure_energy(state:qt.Qobj, proc:"Procedure"):
+    def measure_energy(proc:"Procedure"):
         L = proc.L
-        #chain_density_matrix = Procedure.extract_chain(state, L)
-        
-        energy = qt.expect(measurables.tfim_hamiltonian(L, proc.tfim_parameters), state)
-        return [energy]
+        return [measurables.tfim_hamiltonian(L, proc.tfim_parameters)]
     
-    @staticmethod
-    def measure_normalization_density_matrix(state:qt.Qobj, proc:"Procedure"):
-        return [(state*state.dag()).tr()]
-    
-    @staticmethod
-    def measure_normalization_state_vector(state:qt.Qobj, proc:"Procedure"):
-        return [state.dag()*state]
-    
-    
-    @staticmethod
-    def measure_eigenstate_projections(state:qt.Qobj, proc:"Procedure"):
-        hamiltonian = proc.hamiltonian
-        H = hamiltonian.getInstantaneousHamiltonian(proc.cycle_number, proc.t)
-        eigenenergies, eigenstates = H.eigenstates()
-
-        data = []
-        
-        for i in range(len(eigenstates)):
-            data.append(eigenenergies[i])
-            data.append(proc.abs_squared_scalarproduct(state, eigenstates[i]))
-
-        #Način shranjevanja: energija1, produkt1, energija2, produkt2, energija3, ....
-        return data
-    
-    @staticmethod 
-    def measure_chain_eigenstate_projections(state:qt.Qobj, proc:"Procedure"):
-        hamiltonian = proc.hamiltonian
-        eigenenergies, eigenstates = hamiltonian.getChainHamiltonianEigens()
-
-        tfim_part_of_the_end_cycle_state_density_matrix = state.ptrace([i for i in range(proc.L)])
-
-        data = []
-        
-        for i in range(len(eigenstates)):
-            data.append(eigenenergies[i])
-            data.append(proc.abs_squared_scalarproduct(tfim_part_of_the_end_cycle_state_density_matrix, eigenstates[i]*eigenstates[i].dag()))
-
-        #Način shranjevanja: energija1, produkt1, energija2, produkt2, energija3, ....
-        return data
-
-        
-
     
     #Razlaga funkcij, ki jih runProcedure zahteva kot argumente
 
-    #measure(state:qt.Qobj, proc:Procedure): funkcija ki prevzame stanje verige in kopeli iz vrne enodimenzionalen list ali np.ndarray, ki vsebuje meritve, ki nas zanimajo.
+    #measure: list operatorjev, katerih vrednosti izmerimo (za določene, kot so skalarni produkti in energija, obstajajo že v razred vgrajeni argumenti)
     #setup_state_for_next_cycle(state:qt.Qobj, proc:Procedure): funkcija ki vzame končno stanje verige in kopeli, ter vrne začetno stanje obeh, za naslednji cikel
     #get_startstate(L:int): funkcija, ki vrne stanje verige in kopeli, na začetku prvega cikla
 
-    def runProcedure(self, N_cycles:int, measure:callable, Hamiltonian_class:Hamiltonian = Hamiltonian, setup_state_for_next_cycle:callable = pass_full_density_matrix, using_state_vectors:bool = False, using_density_matrices:bool = False, get_startstate:callable="use_default",
-                      coupling_decrease:callable="use_default", bath_z_field_zeeman_drive:callable="use_default", Jc_drive:callable="use_default"):
+    def runProcedure(self, N_cycles:int, measure:list, setup_state_for_next_cycle:callable = pass_full_density_matrix, using_state_vectors:bool = False, using_density_matrices:bool = False, get_startstate:callable="use_default",
+                      coupling_decrease:callable="use_default", bath_z_field_zeeman_drive:callable="use_default", Jc_drive:callable="use_default",
+                      ):
         
         #list vseh časov znotraj enega cikla, ko poberemo podatke
         ts = np.arange(0,self.T+self.dt, self.dt)
 
         #ustvarimo hamiltonian
-        hamiltonian = Hamiltonian_class(self.L, N_cycles, self.tfim_parameters, self.bath_parameters, self.coupling_parameters, 
+        hamiltonian = Hamiltonian(self.L, N_cycles, self.tfim_parameters, self.bath_parameters, self.coupling_parameters, 
                                   coupling_decrease="use_default", bath_z_field_zeeman_drive="use_default", Jc_drive="use_default")
-        
-        self.set_current_hamiltonian(hamiltonian)
 
         #podatkovna struktura, v katero bomo vpisovali podatke [meritve, cikli, čaz znotraj cikla]
-        data = None
+        data = np.zeros((len(measure), N_cycles, len(ts)), dtype=np.complex64)
+
 
         #Ugotovi, ali delamo z vektorji stanj ali gostotnimi matrikami
         if get_startstate == "use_default":
@@ -423,55 +281,37 @@ class Procedure:
         state = get_startstate(self.L)
 
         for i in tqdm(range(N_cycles), desc = "Cycle"):
-            for j in tqdm(range(len(ts)-1), desc = "sesolve", leave=False):
-                #Evolucija stanja za en dt naprej
-                if using_state_vectors:
-                    result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=[ts[j], ts[j+1]])
-                else:
-                    result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=[ts[j], ts[j+1]])
+            #Izvedemo časovno evolucijo za en cikel
+            if using_state_vectors:
+                result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=ts, e_ops=measure, options=qt.solver.Options(store_final_state = True, store_states = True ))
+            else:
+                result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=ts, e_ops=measure, options=qt.solver.Options(store_final_state = True, store_states = True))
 
-                #Posebej moramo zapisati še začetno stanje, ker ga sicer nebi zapisali
-                if j == 0:
-                    state = result.states[0]
+            #Shranimo meritve
+            for j in range(len(result.expect)):
+                data[j,i,:] = result.expect[j]
 
-                    self.set_current_cycle_number(cycle_number=0)
-                    self.set_current_time(t=ts[0])
-                    measurements = measure(state, self)
+           
 
-                    #Prvič moramo še inicializirati podatkovno strukturo
-                    if i == 0:
-                        data = np.zeros((len(measurements), N_cycles, len(ts)), dtype=np.complex64)
-                    data[:,i,0] = measurements
-
-                state = result.states[-1]
-
-
-                #Meritev željenih opazljivk
-                self.set_current_cycle_number(cycle_number=i)
-                self.set_current_time(t=ts[j+1])
-                measurements = measure(state, self)
-
-                #Meritve shranimo
-                data[:,i,j+1] = np.array(measurements)
 
             #Stanje podamo v naslednji cikel
-            state = setup_state_for_next_cycle(state, self)
+            state = setup_state_for_next_cycle(result.final_state, self)
+            
 
         return data
-    
-    
 
 #Primer uporabe
 if __name__ == "__main__":
     proc = Procedure()
-    proc.setParameters(L=3)
+    proc.setParameters(L=4)
 
     times = np.arange(0,proc.T+proc.dt, proc.dt)
 
     T = proc.T
-    N_cycles = 4
+    N_cycles = 25
 
-    data = proc.runProcedure(N_cycles=N_cycles, measure=Procedure.measure_energy,
+
+    data = proc.runProcedure(N_cycles=N_cycles, measure=Procedure.measure_energy(proc),
                           setup_state_for_next_cycle=Procedure.pass_full_density_matrix,
                           coupling_decrease="use_default", using_density_matrices=True)
 

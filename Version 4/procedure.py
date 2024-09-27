@@ -146,6 +146,7 @@ class Procedure:
                  hb:float = 0.8,
                  T:float = 50,
                  dt:float = 0.1,
+                 error_percentage:float = 0
                  ):
         
         self.L = L
@@ -156,6 +157,8 @@ class Procedure:
         self.coupling_parameters = [Jc, T]
         self.dt = dt
         self.time_dependant_functions_coeffs = {'Jc': Jc, 'T': T, 'Bi': Bi, 'Bf': Bf}
+        self.error_percentage = error_percentage
+
 
     #Privzeto začetno stanje
     @staticmethod
@@ -177,6 +180,21 @@ class Procedure:
     def pass_full_density_matrix(state:qt.Qobj, proc:"Procedure"):
         L = proc.L
         chain_density_matrix = qt.ptrace(state, [i for i in range(L)])
+        
+        bath_fully_polarized_state = qt.tensor([qt.basis(2,0) for i in range(L)])
+        bath_fully_polarized_density_matrix = bath_fully_polarized_state * bath_fully_polarized_state.dag()
+
+        return qt.tensor([chain_density_matrix, bath_fully_polarized_density_matrix])
+    
+    @staticmethod
+    def pass_density_matrix_with_errors(state:qt.Qobj, proc:"Procedure"):
+        L = proc.L
+        chain_density_matrix = qt.ptrace(state, [i for i in range(L)])
+
+        random_state = qt.tensor([qt.rand_ket(2) for i in range(L)])
+        random_density_matrix = random_state * random_state.dag()
+
+        chain_density_matrix = np.sqrt(1-proc.error_percentage) * chain_density_matrix + np.sqrt(proc.error_percentage) * random_density_matrix
         
         bath_fully_polarized_state = qt.tensor([qt.basis(2,0) for i in range(L)])
         bath_fully_polarized_density_matrix = bath_fully_polarized_state * bath_fully_polarized_state.dag()
@@ -225,13 +243,6 @@ class Procedure:
         L = proc.L
         return [measurables.tfim_hamiltonian(L, proc.tfim_parameters)]
     
-    @staticmethod
-    def measure_normalization_density_matrix(state:qt.Qobj, proc:"Procedure"):
-        return [(state*state.dag()).tr()]
-    
-    @staticmethod
-    def measure_normalization_state_vector(state:qt.Qobj, proc:"Procedure"):
-        return [state.dag()*state]
     
     #Razlaga funkcij, ki jih runProcedure zahteva kot argumente
 
@@ -245,7 +256,6 @@ class Procedure:
         
         #list vseh časov znotraj enega cikla, ko poberemo podatke
         ts = np.arange(0,self.T+self.dt, self.dt)
-        print(measure)
 
         #ustvarimo hamiltonian
         hamiltonian = Hamiltonian(self.L, N_cycles, self.tfim_parameters, self.bath_parameters, self.coupling_parameters, 
@@ -298,7 +308,7 @@ if __name__ == "__main__":
     times = np.arange(0,proc.T+proc.dt, proc.dt)
 
     T = proc.T
-    N_cycles = 25
+    N_cycles = 2
 
 
     data = proc.runProcedure(N_cycles=N_cycles, measure=Procedure.measure_energy(proc),

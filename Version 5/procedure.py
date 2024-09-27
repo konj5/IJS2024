@@ -18,9 +18,8 @@ class Hamiltonian():
     #bath_z_field_zeeman_drive: Funkcija, ki poda eksaktno odvisnost za bath_z_field znotraj cikla
 
 
-    def __init__(self, L:int, N_cycles:int, tfim_parameters:list, bath_parameters:list, coupling_parameters:list, coupling_decrease:callable = "use_default", Jc_drive:callable = "use_default", bath_z_field_zeeman_drive:callable = "use_default") -> None:
+    def __init__(self, L:int, N_cycles:int, chain_hamiltonian:qt.Qobj, bath_parameters:list, coupling_parameters:list, coupling_decrease:callable = "use_default", Jc_drive:callable = "use_default", bath_z_field_zeeman_drive:callable = "use_default") -> None:
         self.L = L
-        self.tfim_parameters = tfim_parameters # [J, hx, hz]
         self.bath_parameters = bath_parameters # [hb, Bi, Bf, T]
         self.coupling_parameters = coupling_parameters #  [Jc, T]
 
@@ -70,22 +69,7 @@ class Hamiltonian():
         self.sz_list = sz_list
 
         #Ustvarimo časovno popolnoma neodvisen hamiltonian verige
-        J, hx, hz = tfim_parameters
-
-        J_list = np.ones(L) * J
-        hx_list = np.ones(L) * hx
-        hz_list = np.ones(L) * hz
-
-        H_ising_chain = 0
-
-        for n in range(L):
-            H_ising_chain += -hx_list[n] * sx_list[n]
-            H_ising_chain += -hz_list[n] * sz_list[n]
-
-        for n in range(L):
-            H_ising_chain += - J_list[n] * sz_list[n] * sz_list[((n+1)%L)]
-
-        self.H_ising_chain = H_ising_chain
+        self.H_ising_chain = chain_hamiltonian
 
         #Ustvarimo časovno popolnoma neodvisen del hamiltoniana kopeli
         H_bath_x_field = 0
@@ -140,56 +124,7 @@ class Hamiltonian():
         #Poskrbimo, da diagonalizacije ne izvajamo več kot enkrat
         if self.eigenenergies is None:
 
-            si = qt.qeye(2)
-            sx = qt.sigmax()
-            sy = qt.sigmay()
-            sz = qt.sigmaz()
-            sx_list = []
-            sy_list = []
-            sz_list = []
-
-            L = self.L
-
-            N = L
-
-            for n in range(N):
-                op_list = []
-                for m in range(N):
-                    op_list.append(si)
-
-                op_list[n] = sx
-                sx_list.append(qt.tensor(op_list))
-
-                op_list[n] = sy
-                sy_list.append(qt.tensor(op_list))
-
-                op_list[n] = sz
-                sz_list.append(qt.tensor(op_list))
-
-            self.sx_list = sx_list
-            self.sy_list = sy_list
-            self.sz_list = sz_list
-
-            #Ustvarimo časovno popolnoma neodvisen hamiltonian verige
-            J, hx, hz = self.tfim_parameters
-
-            J_list = np.ones(L) * J
-            hx_list = np.ones(L) * hx
-            hz_list = np.ones(L) * hz
-
-            H_ising_chain = 0
-
-            for n in range(L):
-                H_ising_chain += -hx_list[n] * sx_list[n]
-                H_ising_chain += -hz_list[n] * sz_list[n]
-
-            for n in range(L):
-                H_ising_chain += - J_list[n] * sz_list[n] * sz_list[((n+1)%L)]
-
-
-
-
-            eigenenergies, eigenstates = H_ising_chain.eigenstates()
+            eigenenergies, eigenstates = self.H_ising_chain.H_ising_chain.eigenstates()
             self.eigenenergies, self.eigenstates = eigenenergies, eigenstates
             return eigenenergies, eigenstates
 
@@ -218,7 +153,7 @@ class Procedure:
                  hb:float = 0.8,
                  T:float = 50,
                  dt:float = 0.1,
-                 error_percentage:float = 0
+                 error_percentage:float = 0,
                  ):
         
         self.L = L
@@ -230,6 +165,7 @@ class Procedure:
         self.dt = dt
         self.time_dependant_functions_coeffs = {'Jc': Jc, 'T': T, 'Bi': Bi, 'Bf': Bf}
         self.error_percentage = error_percentage
+        self.v3 = None
 
     #Shrani hamiltonian trenutnega procesa
     def set_current_hamiltonian(self, hamiltonian:Hamiltonian):
@@ -342,6 +278,7 @@ class Procedure:
         
         energy = qt.expect(measurables.tfim_hamiltonian(L, proc.tfim_parameters), state)
         return [energy]
+        
     
     @staticmethod
     def measure_normalization_density_matrix(state:qt.Qobj, proc:"Procedure"):
@@ -354,6 +291,7 @@ class Procedure:
     
     @staticmethod
     def measure_eigenstate_projections(state:qt.Qobj, proc:"Procedure"):
+        if proc.v3 == False: raise Exception("Lastna stanja z operatorji niso implementirana") 
         hamiltonian = proc.hamiltonian
         H = hamiltonian.getInstantaneousHamiltonian(proc.cycle_number, proc.t)
         eigenenergies, eigenstates = H.eigenstates()
@@ -369,6 +307,7 @@ class Procedure:
     
     @staticmethod 
     def measure_chain_eigenstate_projections(state:qt.Qobj, proc:"Procedure"):
+        if proc.v3 == False: raise Exception("Lastna stanja z operatorji niso implementirana") 
         hamiltonian = proc.hamiltonian
         eigenenergies, eigenstates = hamiltonian.getChainHamiltonianEigens()
 
@@ -392,14 +331,14 @@ class Procedure:
     #setup_state_for_next_cycle(state:qt.Qobj, proc:Procedure): funkcija ki vzame končno stanje verige in kopeli, ter vrne začetno stanje obeh, za naslednji cikel
     #get_startstate(L:int): funkcija, ki vrne stanje verige in kopeli, na začetku prvega cikla
 
-    def runProcedure(self, N_cycles:int, measure:callable, Hamiltonian_class:Hamiltonian = Hamiltonian, setup_state_for_next_cycle:callable = pass_full_density_matrix, using_state_vectors:bool = False, using_density_matrices:bool = False, get_startstate:callable="use_default",
+    def runProcedure(self, N_cycles:int, measure:callable, chain_hamiltonian:qt.Qobj, setup_state_for_next_cycle:callable = pass_full_density_matrix, using_state_vectors:bool = False, using_density_matrices:bool = False, get_startstate:callable="use_default",
                       coupling_decrease:callable="use_default", bath_z_field_zeeman_drive:callable="use_default", Jc_drive:callable="use_default"):
         
         #list vseh časov znotraj enega cikla, ko poberemo podatke
         ts = np.arange(0,self.T+self.dt, self.dt)
 
         #ustvarimo hamiltonian
-        hamiltonian = Hamiltonian_class(self.L, N_cycles, self.tfim_parameters, self.bath_parameters, self.coupling_parameters, 
+        hamiltonian = Hamiltonian(self.L, N_cycles, chain_hamiltonian, self.bath_parameters, self.coupling_parameters, 
                                   coupling_decrease="use_default", bath_z_field_zeeman_drive="use_default", Jc_drive="use_default")
         
         self.set_current_hamiltonian(hamiltonian)
@@ -422,37 +361,64 @@ class Procedure:
         #Nastavimo začetno stanje
         state = get_startstate(self.L)
 
+        def isFunction(x):
+            try:
+                x(state,self)
+                return True
+            except:
+                return False
+            
+        v3_or_v4 = isFunction(measure)
+        print(v3_or_v4)
+
         for i in tqdm(range(N_cycles), desc = "Cycle"):
-            for j in tqdm(range(len(ts)-1), desc = "sesolve", leave=False):
-                #Evolucija stanja za en dt naprej
-                if using_state_vectors:
-                    result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=[ts[j], ts[j+1]])
-                else:
-                    result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=[ts[j], ts[j+1]])
 
-                #Posebej moramo zapisati še začetno stanje, ker ga sicer nebi zapisali
-                if j == 0:
-                    state = result.states[0]
+            if v3_or_v4:
+                self.v3 = True
 
-                    self.set_current_cycle_number(cycle_number=0)
-                    self.set_current_time(t=ts[0])
+                for j in tqdm(range(len(ts)-1), desc = "sesolve", leave=False):
+                    #Evolucija stanja za en dt naprej
+                    if using_state_vectors:
+                        result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=[ts[j], ts[j+1]])
+                    else:
+                        result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=[ts[j], ts[j+1]])
+
+                    #Posebej moramo zapisati še začetno stanje, ker ga sicer nebi zapisali
+                    if j == 0:
+                        state = result.states[0]
+
+                        self.set_current_cycle_number(cycle_number=0)
+                        self.set_current_time(t=ts[0])
+                        measurements = measure(state, self)
+
+                        #Prvič moramo še inicializirati podatkovno strukturo
+                        if i == 0:
+                            data = np.zeros((len(measurements), N_cycles, len(ts)), dtype=np.complex64)
+                        data[:,i,0] = measurements
+
+                    state = result.states[-1]
+
+
+                    #Meritev željenih opazljivk
+                    self.set_current_cycle_number(cycle_number=i)
+                    self.set_current_time(t=ts[j+1])
                     measurements = measure(state, self)
 
-                    #Prvič moramo še inicializirati podatkovno strukturo
-                    if i == 0:
-                        data = np.zeros((len(measurements), N_cycles, len(ts)), dtype=np.complex64)
-                    data[:,i,0] = measurements
+                    #Meritve shranimo
+                    data[:,i,j+1] = np.array(measurements)
 
-                state = result.states[-1]
+            else:
+                self.v3 = False
 
+                #Izvedemo časovno evolucijo za en cikel
+                if using_state_vectors:
+                    result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=ts, e_ops=measure, progress_bar = "tqdm", options=qt.solver.Options(store_final_state = True, store_states = True ))
+                else:
+                    result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=ts, e_ops=measure, progress_bar = "tqdm", options=qt.solver.Options(store_final_state = True, store_states = True))
 
-                #Meritev željenih opazljivk
-                self.set_current_cycle_number(cycle_number=i)
-                self.set_current_time(t=ts[j+1])
-                measurements = measure(state, self)
-
-                #Meritve shranimo
-                data[:,i,j+1] = np.array(measurements)
+                #Shranimo meritve
+                for j in range(len(result.expect)):
+                    data[j,i,:] = result.expect[j]
 
             #Stanje podamo v naslednji cikel
             state = setup_state_for_next_cycle(state, self)
@@ -471,7 +437,7 @@ if __name__ == "__main__":
     T = proc.T
     N_cycles = 4
 
-    data = proc.runProcedure(N_cycles=N_cycles, measure=Procedure.measure_energy,
+    data = proc.runProcedure(N_cycles=N_cycles, chain_hamiltonian=measurables.tfim_hamiltonian(proc.L, proc.tfim_parameters), measure=Procedure.measure_energy,
                           setup_state_for_next_cycle=Procedure.pass_full_density_matrix,
                           coupling_decrease="use_default", using_density_matrices=True)
 

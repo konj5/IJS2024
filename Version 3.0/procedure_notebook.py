@@ -218,6 +218,7 @@ class Procedure:
                  hb:float = 0.8,
                  T:float = 50,
                  dt:float = 0.1,
+                 error_percentage:float = 0
                  ):
         
         self.L = L
@@ -228,6 +229,7 @@ class Procedure:
         self.coupling_parameters = [Jc, T]
         self.dt = dt
         self.time_dependant_functions_coeffs = {'Jc': Jc, 'T': T, 'Bi': Bi, 'Bf': Bf}
+        self.error_percentage = error_percentage
 
     #Shrani hamiltonian trenutnega procesa
     def set_current_hamiltonian(self, hamiltonian:Hamiltonian):
@@ -267,9 +269,24 @@ class Procedure:
 
         return qt.tensor([chain_density_matrix, bath_fully_polarized_density_matrix])
     
+    @staticmethod
+    def pass_density_matrix_with_errors(state:qt.Qobj, proc:"Procedure"):
+        L = proc.L
+        chain_density_matrix = qt.ptrace(state, [i for i in range(L)])
+
+        random_state = qt.tensor([qt.rand_ket(2) for i in range(L)])
+        random_density_matrix = random_state * random_state.dag()
+
+        chain_density_matrix = np.sqrt(1-proc.error_percentage) * chain_density_matrix + np.sqrt(proc.error_percentage) * random_density_matrix
+        
+        bath_fully_polarized_state = qt.tensor([qt.basis(2,0) for i in range(L)])
+        bath_fully_polarized_density_matrix = bath_fully_polarized_state * bath_fully_polarized_state.dag()
+
+        return qt.tensor([chain_density_matrix, bath_fully_polarized_density_matrix])
+    
     
     @staticmethod
-    def measure_z_direction(state:qt.Qobj, proc:"Procedure"):
+    def pass_measure_z_direction(state:qt.Qobj, proc:"Procedure"):
         L = proc.L
         mag, after_measure_state = qt.measurement.measure_observable(state, measurables.tfim_magnetisation(L))
         tfim_part_of_the_end_cycle_state_density_matrix = after_measure_state.ptrace([i for i in range(L)])
@@ -281,7 +298,7 @@ class Procedure:
         return qt.tensor([tfim_part_of_the_end_cycle_state, bath_fully_polarized_state])
     
     @staticmethod
-    def remake_product_state_with_xz(state:qt.Qobj, proc:"Procedure"):
+    def pass_remake_product_state_with_xz(state:qt.Qobj, proc:"Procedure"):
         L = proc.L
         state = state * state.dag()
         tfim_part_of_the_end_cycle_state_density_matrix = state.ptrace([i for i in range(L)])
@@ -293,7 +310,7 @@ class Procedure:
         return qt.tensor([reconstructed_state, bath_fully_polarized_state])
     
     @staticmethod
-    def remake_product_state_with_xyz(state:qt.Qobj, proc:"Procedure"):
+    def pass_remake_product_state_with_xyz(state:qt.Qobj, proc:"Procedure"):
         L = proc.L
         state = state * state.dag()
         tfim_part_of_the_end_cycle_state_density_matrix = state.ptrace([i for i in range(L)])
@@ -303,6 +320,8 @@ class Procedure:
         bath_fully_polarized_state = qt.tensor([qt.basis(2,0) for i in range(L)])
 
         return qt.tensor([reconstructed_state, bath_fully_polarized_state])
+    
+
 
 
     #Metoda za izračun absolutne vrednosti kvadrata skalarnega produkta stanj
@@ -373,14 +392,14 @@ class Procedure:
     #setup_state_for_next_cycle(state:qt.Qobj, proc:Procedure): funkcija ki vzame končno stanje verige in kopeli, ter vrne začetno stanje obeh, za naslednji cikel
     #get_startstate(L:int): funkcija, ki vrne stanje verige in kopeli, na začetku prvega cikla
 
-    def runProcedure(self, N_cycles:int, measure:callable, setup_state_for_next_cycle:callable = pass_full_density_matrix, using_state_vectors:bool = False, using_density_matrices:bool = False, get_startstate:callable="use_default",
+    def runProcedure(self, N_cycles:int, measure:callable, Hamiltonian_class:Hamiltonian = Hamiltonian, setup_state_for_next_cycle:callable = pass_full_density_matrix, using_state_vectors:bool = False, using_density_matrices:bool = False, get_startstate:callable="use_default",
                       coupling_decrease:callable="use_default", bath_z_field_zeeman_drive:callable="use_default", Jc_drive:callable="use_default"):
         
         #list vseh časov znotraj enega cikla, ko poberemo podatke
         ts = np.arange(0,self.T+self.dt, self.dt)
 
         #ustvarimo hamiltonian
-        hamiltonian = Hamiltonian(self.L, N_cycles, self.tfim_parameters, self.bath_parameters, self.coupling_parameters, 
+        hamiltonian = Hamiltonian_class(self.L, N_cycles, self.tfim_parameters, self.bath_parameters, self.coupling_parameters, 
                                   coupling_decrease="use_default", bath_z_field_zeeman_drive="use_default", Jc_drive="use_default")
         
         self.set_current_hamiltonian(hamiltonian)
