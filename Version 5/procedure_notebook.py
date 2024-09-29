@@ -376,7 +376,7 @@ class Procedure:
             if v3_or_v4:
                 self.v3 = True
 
-                for j in tqdm(range(len(ts)-1), desc = "sesolve", leave=False):
+                for j in tqdm(range(len(ts)-1), desc = "sesolve" if using_state_vectors else "mesolve", leave=False):
                     #Evolucija stanja za en dt naprej
                     if using_state_vectors:
                         result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=[ts[j], ts[j+1]])

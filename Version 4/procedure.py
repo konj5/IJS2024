@@ -85,6 +85,8 @@ class Hamiltonian():
         for n in range(L):
             H_ising_chain += - J_list[n] * sz_list[n] * sz_list[((n+1)%L)]
 
+        H_ising_chain = measurables.tfim_hamiltonian(proc.L, proc.tfim_parameters)
+
         self.H_ising_chain = H_ising_chain
 
         #Ustvarimo časovno popolnoma neodvisen del hamiltoniana kopeli
@@ -283,9 +285,9 @@ class Procedure:
         for i in tqdm(range(N_cycles), desc = "Cycle"):
             #Izvedemo časovno evolucijo za en cikel
             if using_state_vectors:
-                result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=ts, e_ops=measure, progress_bar = "tqdm", options=qt.solver.Options(store_final_state = True, store_states = True ))
+                result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=ts, e_ops=measure, progress_bar = "tqdm", options=qt.solver.Options(store_final_state = True))
             else:
-                result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=ts, e_ops=measure, progress_bar = "tqdm", options=qt.solver.Options(store_final_state = True, store_states = True))
+                result = qt.mesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), rho0 = state, tlist=ts, e_ops=measure, progress_bar = "tqdm", options=qt.solver.Options(store_final_state = True))
 
             #Shranimo meritve
             for j in range(len(result.expect)):
@@ -303,15 +305,15 @@ class Procedure:
 #Primer uporabe
 if __name__ == "__main__":
     proc = Procedure()
-    proc.setParameters(L=4)
+    proc.setParameters(L=2)
 
     times = np.arange(0,proc.T+proc.dt, proc.dt)
 
     T = proc.T
-    N_cycles = 2
+    N_cycles = 40
 
 
-    data = proc.runProcedure(N_cycles=N_cycles, measure=Procedure.measure_energy(proc),
+    data = proc.runProcedure(N_cycles=N_cycles, measure=[measurables.tfim_hamiltonian(proc.L, proc.tfim_parameters)],
                           setup_state_for_next_cycle=Procedure.pass_full_density_matrix,
                           coupling_decrease="use_default", using_density_matrices=True)
 

@@ -376,7 +376,7 @@ class Procedure:
             if v3_or_v4:
                 self.v3 = True
 
-                for j in tqdm(range(len(ts)-1), desc = "sesolve", leave=False):
+                for j in tqdm(range(len(ts)-1), desc = "sesolve" if using_state_vectors else "mesolve", leave=False):
                     #Evolucija stanja za en dt naprej
                     if using_state_vectors:
                         result = qt.sesolve(H=hamiltonian.getHamiltonian(cycleNumber=i), psi0 = state, tlist=[ts[j], ts[j+1]])
@@ -435,26 +435,14 @@ if __name__ == "__main__":
     times = np.arange(0,proc.T+proc.dt, proc.dt)
 
     T = proc.T
-    N_cycles = 4
+    N_cycles = 30
 
     data = proc.runProcedure(N_cycles=N_cycles, chain_hamiltonian=measurables.tfim_hamiltonian(proc.L, proc.tfim_parameters), measure=Procedure.measure_energy,
                           setup_state_for_next_cycle=Procedure.pass_full_density_matrix,
                           coupling_decrease="use_default", using_density_matrices=True)
 
-    #Stopnica nastavljena na roko, za T = 50
-    def smooth_step_coupling_decrease(t):
-        assert T == 50
-
-        def g(t): return 1 / (1 + np.exp(t))
-        ta = 5.7
-        t0 = 0
-        t1 = T
-        a = 0.6
-        def f(t): return g(a * ((t-ta)-t1)) + g(-a * ((t+ta)-t0)) - 1
-        return f
-
     H_TFIM = measurables.tfim_hamiltonian(proc.L, proc.tfim_parameters)
-    M_TFIM = measurables.tfim_magnetisation(proc.L)
+
 
     eigen_energies = H_TFIM.eigenenergies()
 
