@@ -139,7 +139,7 @@ class Procedure:
     
     #Ustvari prazen objekt
     def __init__(self) -> None:
-        pass
+        self.setParameters()
     
     #Nastavi parametre precedure
     def setParameters(self, 
